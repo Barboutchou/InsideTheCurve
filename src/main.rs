@@ -10,64 +10,115 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 #[derive(Debug, Deserialize)]
-pub struct SDMXResponse {
+pub struct ApiResponse {
     pub meta: Meta,
     pub data: Data,
 }
-
 #[derive(Debug, Deserialize)]
 pub struct Meta {
     pub id: String,
-    //pub prepared: String,
-    //pub test: bool,
-    //pub datasetId: String,
+    pub prepared: String,
+    pub test: bool,
+    #[serde(rename = "datasetId")]
+    pub dataset_id: String,
+    pub sender: Entity,
+    pub receiver: Entity,
+    #[serde(default)]
+    pub links: Vec<Link>,
 }
-
+#[derive(Debug, Deserialize)]
+pub struct Entity {
+    pub id: String,
+}
 #[derive(Debug, Deserialize)]
 pub struct Data {
-    pub dataSets: Vec<DataSet>,
-    pub structure : StructureSet
+    #[serde(rename = "dataSets")]
+    pub data_sets: Vec<DataSet>,
+    pub structure: Structure,
 }
-#[derive(Debug, Deserialize)]
-pub struct StructureSet {
-    pub description: String,
-    //pub observation: Vec<ObservationDimension>,
-}
-#[derive(Debug, Deserialize)]
-pub struct ObservationDimension {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub keyPosition: Option<u32>,
-    pub role: Option<String>,
-    pub values: Vec<ObservationValue>,
-}
-#[derive(Debug, Deserialize)]
-pub struct ObservationValue {
-    pub id: String,
-    pub name: String,
-    pub start: Option<String>,
-    pub end: Option<String>,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct DataSet {
+    #[serde(default)]
+    pub links: Vec<Link>,
+    #[serde(rename = "reportingBegin")]
+    pub reporting_begin: String,
+    #[serde(rename = "reportingEnd")]
+    pub reporting_end: String,
+    pub action: String,
     pub series: HashMap<String, Series>,
-    //pub reportingBegin: String,
-    //pub reportingEnd: String,
-    //pub action: String,
-    // links ignored for now
 }
-
 #[derive(Debug, Deserialize)]
 pub struct Series {
-    //pub attributes: Vec<Option<serde_json::Value>>,
-    pub observations: HashMap<String, Observation>,
+    pub attributes: Vec<Option<u32>>,
+    pub observations: HashMap<String, Vec<String>>,
 }
-
 #[derive(Debug, Deserialize)]
-pub struct Observation(pub Vec<String>); // ["99.5210"]
-
+pub struct Link {
+    pub rel: String,
+    #[serde(default)]
+    pub urn: Option<String>,
+    #[serde(default)]
+    pub href: Option<String>,
+    #[serde(default)]
+    pub uri: Option<String>,
+}
+#[derive(Debug, Deserialize)]
+pub struct Structure {
+    #[serde(default)]
+    pub links: Vec<Link>,
+    pub name: String,
+    #[serde(default)]
+    pub names: HashMap<String, String>,
+    pub description: String,
+    #[serde(default)]
+    pub descriptions: HashMap<String, String>,
+    pub dimensions: Dimensions,
+    pub attributes: Attributes,
+}
+#[derive(Debug, Deserialize)]
+pub struct Dimensions {
+    pub dataset: Vec<Component>,
+    pub series: Vec<Component>,
+    pub observation: Vec<Component>,
+}
+#[derive(Debug, Deserialize)]
+pub struct Attributes {
+    pub dataset: Vec<Component>,
+    pub series: Vec<Component>,
+    pub observation: Vec<Component>,
+}
+#[derive(Debug, Deserialize)]
+pub struct ComponentValue {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub start: Option<String>,
+    #[serde(default)]
+    pub end: Option<String>,
+}
+#[derive(Debug, Deserialize)]
+pub struct Component {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    #[serde(rename = "keyPosition")]
+    pub key_position: Option<u32>,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub relationship: Option<Relationship>,
+    #[serde(default)]
+    pub values: Vec<ComponentValue>,
+}
+#[derive(Debug, Deserialize)]
+pub struct Relationship {
+    pub dimensions: Vec<String>,
+}
 /// year-month-day
 pub enum TimeSelector {
     TimePeriod { start: String, end: String },
@@ -112,7 +163,7 @@ impl NorgesBankClient {
         &self,
         timeselector: TimeSelector,
         isins: I,
-    ) -> Result<SDMXResponse, reqwest::Error>
+    ) -> Result<ApiResponse, reqwest::Error>
     where
         I: IntoIterator,
         I::Item: AsRef<str>
@@ -133,7 +184,7 @@ impl NorgesBankClient {
                 params.push(("lastNObservations".into(), periods));
             }
         }
-        let resp: SDMXResponse = self.client
+        let resp: ApiResponse = self.client
             .get(url)
             .query(&params)
             .send()
@@ -149,21 +200,9 @@ impl NorgesBankClient {
 async fn main() {
     let nb_client = NorgesBankClient::new().unwrap();
     let ts = TimeSelector::TimePeriod {start : "2025-12-15".into() , end : "2025-12-17".into() };
-    let isin = "NO0010757925";
+    let isin = ["NO0010757925"];
 
-    let x = nb_client.get_ngs_sdmx(ts, &[isin]).await.unwrap();
+    let res = nb_client.get_ngs_sdmx(ts, &isin).await.unwrap();
 
-    for dataset in x.data.dataSets {
-        // First, get the series we care about
-        let prices_seriees = dataset.series.get("0:0:0").unwrap();
-        let prices_series_bis = dataset.series.get("0:0:3").unwrap();
-        println!("ASK: {:?}", prices_seriees );
-        println!("BID: {:?}", prices_series_bis);
-
-    }
-
-    println!("{:?}", x.data.structure.description );
-
+    println!("{:?}", res.data.structure.dimensions )
 }
-
-
